@@ -14,8 +14,14 @@ declared an S3 bucket in `main.tf`, created it with `terraform apply`, verified
 it existed, then tore it down with `terraform destroy`. Confirmed the full
 create/destroy cycle in AWS CloudTrail.
 
-**Not started yet:** VPC, EC2, RDS, the app-tier S3 bucket, and the CI/CD
-pipeline. App logic for the EC2 tier is TBD.
+Built the VPC (public/private subnets, internet gateway, route table) — left
+running, since none of these pieces cost anything hourly. Built an EC2 instance
+and security group in the public subnet, verified it in CloudTrail, then
+destroyed just those two resources with a targeted `terraform destroy`, leaving
+the VPC intact.
+
+**Not started yet:** RDS, the app-tier S3 bucket, and the CI/CD pipeline. App
+logic for the EC2 tier is TBD.
 
 ## Prerequisites
 
@@ -65,3 +71,16 @@ pipeline. App logic for the EC2 tier is TBD.
   practice bucket used earlier
 - **CI/CD** — GitHub Actions runs `terraform plan` on every PR, `terraform
   apply` on merge to main
+
+## Lessons learned
+
+- `terraform destroy` with no arguments destroys **everything** in the state
+  file, not just what you're currently working on. Learned this the hard way
+  when destroying the EC2 instance almost took the VPC down with it. Use
+  `-target` to scope a destroy to specific resources — but treat that as an
+  exception for iterating on one layer at a time, not the default workflow.
+  A real team's state file usually represents a shared environment, so an
+  untargeted destroy there has a much bigger blast radius than "redo a lab."
+- For anything holding real data (RDS, in particular), always confirm a final
+  snapshot is enabled before destroying — an EC2 instance is annoying to
+  recreate, but a database without a snapshot means the data itself is gone.
