@@ -20,8 +20,18 @@ and security group in the public subnet, verified it in CloudTrail, then
 destroyed just those two resources with a targeted `terraform destroy`, leaving
 the VPC intact.
 
-**Not started yet:** RDS, the app-tier S3 bucket, and the CI/CD pipeline. App
-logic for the EC2 tier is TBD.
+Added a second private subnet (RDS requires a DB subnet group spanning at least
+two Availability Zones) and built RDS alongside a rebuilt EC2 instance, so the
+security boundary between them would mean something. RDS's security group only
+allows its port from the EC2 security group, not from any IP range. Verified
+that boundary two ways: in CloudTrail (the `AuthorizeSecurityGroupIngress` event
+shows the RDS security group authorized specifically against the EC2 security
+group's ID) and empirically (`nc` from my own laptop to the RDS endpoint timed
+out, since my IP isn't in the allow list). Destroyed both EC2 and RDS afterward
+with a targeted `terraform destroy`, again leaving the VPC intact.
+
+**Not started yet:** the app-tier S3 bucket and the CI/CD pipeline. App logic
+for the EC2 tier is TBD.
 
 ## Prerequisites
 
