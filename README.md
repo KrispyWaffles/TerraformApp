@@ -39,9 +39,16 @@ Left the bucket and IAM resources running (no hourly cost); EC2 and RDS remain
 torn down until a deliberate end-to-end pass attaches the instance profile to
 a running EC2 instance and proves it can actually use the role.
 
-**Not started yet:** the CI/CD pipeline, and the full end-to-end proof that EC2
-can assume its role and read/write the S3 bucket. App logic for the EC2 tier
-is TBD.
+Built a remote state backend: a dedicated, versioned, encrypted S3 bucket for
+`terraform.tfstate` plus a DynamoDB table for state locking. Migrated existing
+local state into it with `terraform init`. This exists because GitHub Actions
+runners are disposable — a fresh, empty machine spins up for every run, with
+no access to a local state file. Without a shared remote backend, CI would have
+no memory of what already exists in AWS and would try to recreate everything.
+
+**Not started yet:** the actual GitHub Actions workflow, GitHub Secrets for
+CI credentials, and the full end-to-end proof that EC2 can assume its role and
+read/write the S3 bucket. App logic for the EC2 tier is TBD.
 
 ## Prerequisites
 
@@ -93,6 +100,9 @@ is TBD.
   lives outside the VPC entirely
 - **CI/CD** — GitHub Actions runs `terraform plan` on every PR, `terraform
   apply` on merge to main
+- **Remote state backend** — a separate, dedicated S3 bucket (versioned,
+  encrypted) plus a DynamoDB lock table, so both my laptop and GitHub Actions
+  read/write the same `terraform.tfstate`, never a local file
 
 ## Lessons learned
 
