@@ -167,3 +167,53 @@ resource "aws_db_instance" "main" {
   publicly_accessible    = false
   skip_final_snapshot    = true # practice data only — see README Lessons learned
 }
+
+resource "aws_s3_bucket" "app_assets" {
+  bucket = "wess-terraformapp-assets-wc080826"
+}
+
+resource "aws_s3_bucket_public_access_block" "app_assets" {
+  bucket = aws_s3_bucket.app_assets.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_iam_role" "ec2_app_role" {
+  name = "terraformapp-ec2-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "ec2.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "ec2_app_assets_access" {
+  name = "terraformapp-ec2-s3-access"
+  role = aws_iam_role.ec2_app_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]
+      Resource = [
+        aws_s3_bucket.app_assets.arn,
+        "${aws_s3_bucket.app_assets.arn}/*"
+      ]
+    }]
+  })
+}
+
+resource "aws_iam_instance_profile" "ec2_app_profile" {
+  name = "terraformapp-ec2-profile"
+  role = aws_iam_role.ec2_app_role.name
+}

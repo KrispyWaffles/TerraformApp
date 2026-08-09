@@ -30,8 +30,18 @@ group's ID) and empirically (`nc` from my own laptop to the RDS endpoint timed
 out, since my IP isn't in the allow list). Destroyed both EC2 and RDS afterward
 with a targeted `terraform destroy`, again leaving the VPC intact.
 
-**Not started yet:** the app-tier S3 bucket and the CI/CD pipeline. App logic
-for the EC2 tier is TBD.
+Built the app-tier S3 bucket, fully private (all four public-access-block
+settings on), plus an IAM role, policy, and instance profile scoped to exactly
+that bucket — `GetObject`/`PutObject`/`ListBucket` only, nothing broader. This
+is unlike EC2/RDS: S3 isn't inside the VPC at all, so access is controlled by
+IAM identity rather than network location (no security group applies here).
+Left the bucket and IAM resources running (no hourly cost); EC2 and RDS remain
+torn down until a deliberate end-to-end pass attaches the instance profile to
+a running EC2 instance and proves it can actually use the role.
+
+**Not started yet:** the CI/CD pipeline, and the full end-to-end proof that EC2
+can assume its role and read/write the S3 bucket. App logic for the EC2 tier
+is TBD.
 
 ## Prerequisites
 
@@ -78,7 +88,9 @@ for the EC2 tier is TBD.
 - **RDS** (private subnet) — the application's database, reachable only from
   EC2, never directly from the internet
 - **S3** — storage for app assets (files, images, etc.), separate from the
-  practice bucket used earlier
+  practice bucket used earlier. Fully private; access granted only via an IAM
+  role/instance profile meant for the EC2 tier, not a security group — S3
+  lives outside the VPC entirely
 - **CI/CD** — GitHub Actions runs `terraform plan` on every PR, `terraform
   apply` on merge to main
 
@@ -94,3 +106,8 @@ for the EC2 tier is TBD.
 - For anything holding real data (RDS, in particular), always confirm a final
   snapshot is enabled before destroying — an EC2 instance is annoying to
   recreate, but a database without a snapshot means the data itself is gone.
+- One syntax mistake early in `main.tf` (an unterminated string) cascaded into
+  dozens of unrelated-looking `terraform validate` errors for every line after
+  it. When facing a wall of errors, fix the *first* one reported and re-check
+  before assuming the rest are real — most of them were fallout, not separate
+  bugs.
