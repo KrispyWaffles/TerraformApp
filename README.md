@@ -151,3 +151,8 @@ bucket. App logic for the EC2 tier is TBD.
     ran on, not the latest one — pushing a fix doesn't help a run you re-run
     from before that fix existed. Check which commit a run is actually tied
     to before trusting its result.
+  - By default the workflow ran on *every* push to `main` — including a
+    commit that only added a screenshot, with no infrastructure change at
+    all. Scoped the triggers with `paths:` so `plan`/`apply` only run when
+    `.tf` files or the workflow file itself change; everything else (docs,
+    images) can be committed without spinning up a pipeline run.
