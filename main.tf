@@ -222,6 +222,11 @@ resource "aws_iam_role_policy" "ec2_app_assets_access" {
   })
 }
 
+resource "aws_iam_role_policy_attachment" "ec2_ssm_access" {
+  role       = aws_iam_role.ec2_app_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
 resource "aws_iam_instance_profile" "ec2_app_profile" {
   name = "terraformapp-ec2-profile"
   role = aws_iam_role.ec2_app_role.name
