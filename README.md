@@ -46,9 +46,16 @@ runners are disposable — a fresh, empty machine spins up for every run, with
 no access to a local state file. Without a shared remote backend, CI would have
 no memory of what already exists in AWS and would try to recreate everything.
 
-**Not started yet:** the actual GitHub Actions workflow, GitHub Secrets for
-CI credentials, and the full end-to-end proof that EC2 can assume its role and
-read/write the S3 bucket. App logic for the EC2 tier is TBD.
+Built the GitHub Actions workflow (`.github/workflows/terraform.yml`): `plan`
+on every PR, `apply` on merge to `main`. Opened a real PR to test it before
+trusting it with anything — the plan-only run surfaced a chain of real CI/CD
+issues one at a time (see Lessons learned), each fixed and re-verified until
+the check came back clean: `Plan: 4 to add, 0 to change, 0 to destroy`, with
+the Apply step correctly skipped (0s, not run) since a PR isn't a merge.
+
+**Not started yet:** merging the PR (the first real CI-driven `apply`), and
+the full end-to-end proof that EC2 can assume its role and read/write the S3
+bucket. App logic for the EC2 tier is TBD.
 
 ## Prerequisites
 
@@ -121,3 +128,26 @@ read/write the S3 bucket. App logic for the EC2 tier is TBD.
   it. When facing a wall of errors, fix the *first* one reported and re-check
   before assuming the rest are real — most of them were fallout, not separate
   bugs.
+- Getting CI/CD actually working took several rounds of debugging, each a
+  distinct lesson:
+  - A GitHub secret's **value** must be the bare credential only — no
+    `key = ` prefix copied in from a config file's syntax, no quotes.
+  - Secrets have to live under **Repository secrets** specifically —
+    "Environment secrets" is a different, more restricted scope the workflow
+    can't see unless it explicitly opts in.
+  - Each credential needs its **own separate named secret** — two values
+    stacked into one secret under a project-themed name isn't the same as two
+    secrets with the exact names the workflow references.
+  - `terraform.tfvars` is gitignored on purpose, which means CI never has it.
+    Any variable it holds (`db_username`, `db_password`) has to be passed to
+    CI a different way — as a `TF_VAR_<name>` environment variable, sourced
+    from its own GitHub secret. I initially added the secrets but forgot to
+    actually wire them into the workflow's `env:` block — the values existed,
+    the workflow just never looked for them.
+  - Cancelling a run that's stuck mid-`plan`/`apply` leaves the DynamoDB state
+    lock orphaned, since Terraform never gets to run its normal cleanup. Fix:
+    `terraform force-unlock <LOCK_ID>` from a machine with backend access.
+  - Re-running an *old* Actions run replays against the commit it originally
+    ran on, not the latest one — pushing a fix doesn't help a run you re-run
+    from before that fix existed. Check which commit a run is actually tied
+    to before trusting its result.
