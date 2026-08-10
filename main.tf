@@ -113,6 +113,7 @@ resource "aws_instance" "web" {
   instance_type          = "t2.micro"
   subnet_id              = aws_subnet.public.id
   vpc_security_group_ids = [aws_security_group.web.id]
+  iam_instance_profile   = aws_iam_instance_profile.ec2_app_profile.name
 
   tags = {
     Name = "terraformapp-web"
