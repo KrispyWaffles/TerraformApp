@@ -73,8 +73,22 @@ operating as `assumed-role/terraformapp-ec2-role`, and the upload succeeded
 using only the scoped IAM policy from the S3 stage. Verified independently
 from my own laptop afterward that the file was really there.
 
-**Core roadmap complete.** App logic for the EC2 tier is still TBD. Remaining:
-final architecture diagram and full teardown.
+Ran the final teardown. Since state lived in the S3/DynamoDB backend built
+earlier, destroying it while Terraform was actively using it to track the
+destroy itself would have been self-referential — so first removed the
+`backend "s3"` block and ran `terraform init -migrate-state` to bring state
+back to a local file, *then* ran `terraform destroy` against that local copy,
+which could safely remove the backend resources too since nothing depended on
+them being live anymore. 22 of 24 resources destroyed cleanly on the first
+pass; the two S3 buckets (state backend and app-assets) failed with
+`BucketNotEmpty` — both still had real content (state file versions, the SSM
+test upload) and neither had `force_destroy` set. Added it, applied that one
+attribute change, destroyed again — clean. Verified zero resources remain
+across EC2, RDS, VPC, DynamoDB, S3, and IAM.
+
+**Project complete.** App logic for the EC2 tier was intentionally left TBD —
+the goal was the infrastructure and pipeline, not a specific app. Remaining:
+final architecture diagram.
 
 ## Prerequisites
 
@@ -185,3 +199,13 @@ final architecture diagram and full teardown.
   to be a better fit than SSH for testing the EC2 instance — no key pair to
   generate or protect, no port 22 open in the security group, and access is
   controlled entirely through the same IAM role already built for S3 access.
+- Tearing down a backend you're actively using to store state is a real
+  chicken-and-egg problem — solved by migrating state back to local first,
+  destroying everything (backend included) against that local copy, so
+  nothing is destroying the shelf it's standing on.
+- `force_destroy = true` on an S3 bucket only takes effect once it's actually
+  **applied** — adding it to `main.tf` and immediately running `destroy`
+  isn't enough, because destroy reads the resource's last-applied *state*,
+  not fresh config. Had to `apply` the attribute change first (a targeted
+  apply, to avoid recreating the 22 resources still declared in `main.tf`
+  but already destroyed), then `destroy` worked.

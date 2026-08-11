@@ -6,6 +6,7 @@ terraform {
     }
   }
 
+  /*
   backend "s3" {
     bucket         = "wess-terraformapp-tfstate-wc080926"
     key            = "terraformapp/terraform.tfstate"
@@ -13,6 +14,7 @@ terraform {
     dynamodb_table = "terraformapp-tfstate-lock"
     encrypt        = true
   }
+ */ 
 }
 
 provider "aws" {
@@ -173,7 +175,8 @@ resource "aws_db_instance" "main" {
 }
 
 resource "aws_s3_bucket" "app_assets" {
-  bucket = "wess-terraformapp-assets-wc080826"
+  bucket        = "wess-terraformapp-assets-wc080826"
+  force_destroy = true # allow final teardown to empty and delete non-empty bucket
 }
 
 resource "aws_s3_bucket_public_access_block" "app_assets" {
@@ -228,7 +231,8 @@ resource "aws_iam_instance_profile" "ec2_app_profile" {
 }
 
 resource "aws_s3_bucket" "tfstate" {
-  bucket = "wess-terraformapp-tfstate-wc080926"
+  bucket        = "wess-terraformapp-tfstate-wc080926"
+  force_destroy = true # allow final teardown to empty (incl. all versions) and delete
 }
 
 resource "aws_s3_bucket_versioning" "tfstate" {
