@@ -53,9 +53,28 @@ issues one at a time (see Lessons learned), each fixed and re-verified until
 the check came back clean: `Plan: 4 to add, 0 to change, 0 to destroy`, with
 the Apply step correctly skipped (0s, not run) since a PR isn't a merge.
 
-**Not started yet:** merging the PR (the first real CI-driven `apply`), and
-the full end-to-end proof that EC2 can assume its role and read/write the S3
-bucket. App logic for the EC2 tier is TBD.
+Merged the PR — the first real CI-driven `apply` ran successfully, confirmed
+in CloudTrail: security groups, EC2, and RDS all created by `cli-admin` via
+the pipeline, no manual terminal involved.
+
+While verifying, noticed the EC2 instance was running an unexpected
+ECS/Neuron-optimized AMI instead of plain Amazon Linux 2023 — the `aws_ami`
+data source's wildcard filter (`al2023-ami-*-x86_64`) matched more than
+intended, and `most_recent = true` silently picked whichever AWS published
+last. Fixed by switching to the unambiguous SSM parameter
+`/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64`.
+Also attached the `AmazonSSMManagedInstanceCore` managed policy to the EC2
+role, enabling Session Manager access with no SSH keys, no open port 22.
+
+Ran the full end-to-end proof: used `aws ssm send-command` to run a script
+*on* the EC2 instance — no local credentials involved — that wrote a file and
+uploaded it to the app-tier S3 bucket. Output confirmed the instance was
+operating as `assumed-role/terraformapp-ec2-role`, and the upload succeeded
+using only the scoped IAM policy from the S3 stage. Verified independently
+from my own laptop afterward that the file was really there.
+
+**Core roadmap complete.** App logic for the EC2 tier is still TBD. Remaining:
+final architecture diagram and full teardown.
 
 ## Prerequisites
 
@@ -156,3 +175,13 @@ bucket. App logic for the EC2 tier is TBD.
     all. Scoped the triggers with `paths:` so `plan`/`apply` only run when
     `.tf` files or the workflow file itself change; everything else (docs,
     images) can be committed without spinning up a pipeline run.
+- A `data "aws_ami"` filter using a wildcard (`al2023-ami-*-x86_64`) combined
+  with `most_recent = true` isn't as specific as it looks — it silently
+  matched an ECS/Neuron-optimized image instead of plain Amazon Linux, and
+  which AMI it resolves to can drift over time as AWS publishes new images.
+  The fix: use AWS's official SSM parameter for "the current AMI" instead of
+  a name filter — deterministic, no ambiguity.
+- Session Manager (via the `AmazonSSMManagedInstanceCore` policy) turned out
+  to be a better fit than SSH for testing the EC2 instance — no key pair to
+  generate or protect, no port 22 open in the security group, and access is
+  controlled entirely through the same IAM role already built for S3 access.
