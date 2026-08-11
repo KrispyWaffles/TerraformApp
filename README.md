@@ -127,19 +127,68 @@ final architecture diagram.
    terraform destroy   # type "yes" — don't skip this
    ```
 
-## Architecture (planned)
+## Architecture
+
+Built, proven end-to-end, and torn down — see Status above for how each piece
+was verified. Redeployable any time via `terraform apply` (see below).
+
+```mermaid
+graph TB
+    Internet((Internet))
+
+    subgraph VPC["VPC — 10.0.0.0/16"]
+        IGW[Internet Gateway]
+
+        subgraph Public["Public subnet"]
+            EC2["EC2 (t2.micro)<br/>Amazon Linux 2023"]
+        end
+
+        subgraph Private["Private subnets — 2 AZs"]
+            RDS[("RDS MySQL<br/>not publicly accessible")]
+        end
+    end
+
+    S3App["S3: app-assets<br/>fully private"]
+    IAMRole["IAM role: terraformapp-ec2-role<br/>GetObject / PutObject / ListBucket"]
+
+    Internet -->|"port 80"| IGW
+    IGW --> EC2
+    EC2 -->|"port 3306, SG-scoped<br/>to EC2's security group only"| RDS
+    EC2 -->|"assumes role via<br/>instance profile"| IAMRole
+    IAMRole -->|"scoped to this<br/>bucket only"| S3App
+    EC2 -.->|"Session Manager<br/>no SSH, no open port 22"| SSM["AWS Systems Manager"]
+
+    subgraph Pipeline["CI/CD"]
+        GHA["GitHub Actions<br/>plan on PR, apply on merge"]
+    end
+
+    S3State["S3: tfstate<br/>versioned + encrypted"]
+    Lock[("DynamoDB<br/>lock table")]
+
+    GHA -->|"terraform apply"| VPC
+    GHA <-->|"read/write state"| S3State
+    GHA <-->|"acquire/release lock"| Lock
+
+    style S3App fill:#2d5a3d,stroke:#4a9d6f,color:#fff
+    style S3State fill:#2d4a5a,stroke:#4a8a9d,color:#fff
+    style Lock fill:#2d4a5a,stroke:#4a8a9d,color:#fff
+    style RDS fill:#5a2d2d,stroke:#9d4a4a,color:#fff
+    style EC2 fill:#4a4a2d,stroke:#9d9d4a,color:#fff
+```
 
 - **VPC** — the network boundary everything else lives inside, split into a
-  public and private subnet
+  public subnet and private subnets across 2 Availability Zones
 - **EC2** (public subnet) — runs the application, reachable from the internet
-- **RDS** (private subnet) — the application's database, reachable only from
-  EC2, never directly from the internet
-- **S3** — storage for app assets (files, images, etc.), separate from the
-  practice bucket used earlier. Fully private; access granted only via an IAM
-  role/instance profile meant for the EC2 tier, not a security group — S3
-  lives outside the VPC entirely
+  on port 80; administered via Session Manager, not SSH
+- **RDS** (private subnets) — the application's database, reachable only from
+  EC2's security group, never directly from the internet — proven by a timed-out
+  connection attempt from an unauthorized IP (see Lessons learned)
+- **S3 (app assets)** — fully private; access granted only via an IAM
+  role/instance profile scoped to exactly this bucket, not a security group —
+  S3 lives outside the VPC entirely, so identity controls access, not network
+  location
 - **CI/CD** — GitHub Actions runs `terraform plan` on every PR, `terraform
-  apply` on merge to main
+  apply` on merge to main, authenticated via repository secrets
 - **Remote state backend** — a separate, dedicated S3 bucket (versioned,
   encrypted) plus a DynamoDB lock table, so both my laptop and GitHub Actions
   read/write the same `terraform.tfstate`, never a local file
