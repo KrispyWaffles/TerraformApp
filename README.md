@@ -14,11 +14,16 @@ declared an S3 bucket in `main.tf`, created it with `terraform apply`, verified
 it existed, then tore it down with `terraform destroy`. Confirmed the full
 create/destroy cycle in AWS CloudTrail.
 
+![terraform apply creating the practice S3 bucket](images/terraformapply.png)
+
 Built the VPC (public/private subnets, internet gateway, route table) — left
 running, since none of these pieces cost anything hourly. Built an EC2 instance
 and security group in the public subnet, verified it in CloudTrail, then
 destroyed just those two resources with a targeted `terraform destroy`, leaving
 the VPC intact.
+
+![CloudTrail confirming all 7 VPC resources created](images/cloudtrailcheck.png)
+![CloudTrail confirming the EC2 instance and security group](images/cloudtrailEC2check.png)
 
 Added a second private subnet (RDS requires a DB subnet group spanning at least
 two Availability Zones) and built RDS alongside a rebuilt EC2 instance, so the
@@ -30,6 +35,8 @@ group's ID) and empirically (`nc` from my own laptop to the RDS endpoint timed
 out, since my IP isn't in the allow list). Destroyed both EC2 and RDS afterward
 with a targeted `terraform destroy`, again leaving the VPC intact.
 
+![Connection attempt from my laptop to RDS timing out](images/connectiontest.png)
+
 Built the app-tier S3 bucket, fully private (all four public-access-block
 settings on), plus an IAM role, policy, and instance profile scoped to exactly
 that bucket — `GetObject`/`PutObject`/`ListBucket` only, nothing broader. This
@@ -38,6 +45,8 @@ IAM identity rather than network location (no security group applies here).
 Left the bucket and IAM resources running (no hourly cost); EC2 and RDS remain
 torn down until a deliberate end-to-end pass attaches the instance profile to
 a running EC2 instance and proves it can actually use the role.
+
+![CloudTrail confirming the private S3 bucket created](images/CloudtrailBucketcheck.png)
 
 Built a remote state backend: a dedicated, versioned, encrypted S3 bucket for
 `terraform.tfstate` plus a DynamoDB table for state locking. Migrated existing
@@ -53,9 +62,13 @@ issues one at a time (see Lessons learned), each fixed and re-verified until
 the check came back clean: `Plan: 4 to add, 0 to change, 0 to destroy`, with
 the Apply step correctly skipped (0s, not run) since a PR isn't a merge.
 
+![A clean plan-only PR check with Apply correctly skipped](images/TFplancheck.png)
+
 Merged the PR — the first real CI-driven `apply` ran successfully, confirmed
 in CloudTrail: security groups, EC2, and RDS all created by `cli-admin` via
 the pipeline, no manual terminal involved.
+
+![CloudTrail showing the full CI-driven apply chain after merge](images/mergeCheck.png)
 
 While verifying, noticed the EC2 instance was running an unexpected
 ECS/Neuron-optimized AMI instead of plain Amazon Linux 2023 — the `aws_ami`
@@ -85,6 +98,8 @@ pass; the two S3 buckets (state backend and app-assets) failed with
 test upload) and neither had `force_destroy` set. Added it, applied that one
 attribute change, destroyed again — clean. Verified zero resources remain
 across EC2, RDS, VPC, DynamoDB, S3, and IAM.
+
+![CloudTrail confirming the final teardown, everything destroyed](images/TFdestroycheck.png)
 
 **Project complete.** App logic for the EC2 tier was intentionally left TBD —
 the goal was the infrastructure and pipeline, not a specific app. Remaining:
